@@ -77,6 +77,16 @@ function 말풍선(who, text, extra) {
 function 출처표시(sources, mode) {
   const box = document.createElement("span");
   box.className = "src";
+  if (mode === "safety") {
+    // 위기 안내: 휴대전화에서 바로 걸 수 있게
+    for (const [n, t] of [["109", "109 전화하기"], ["15770199", "1577-0199"], ["119", "119"]]) {
+      const a = document.createElement("a");
+      a.href = "tel:" + n;
+      a.className = "tel";
+      a.textContent = t;
+      box.appendChild(a);
+    }
+  }
   if (mode === "ai") {
     const ai = document.createElement("span");
     ai.className = "ai-badge";
@@ -354,6 +364,13 @@ $("#chatForm").addEventListener("submit", (e) => {
   input.value = "";
   말풍선("user", v);
   if (예약 && 지금단계) {
+    // 예약 중이라도 위기 표현은 입력값으로 받지 않고 서버 안내로 넘긴다
+    if (/죽고\s*싶|자살|자해|살기\s*싫|사라지고\s*싶|목숨|극단\s*적/.test(v)) {
+      예약 = null;
+      지금단계 = null;
+      선택지([]);
+      return 질문하기(v);
+    }
     if (/^(그만|취소|중단)/.test(v)) return 그만두기();
     선택지([]);
     return 받아서(v);

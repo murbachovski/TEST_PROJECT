@@ -99,6 +99,7 @@ button, input, select { font: inherit; letter-spacing: inherit; }
 .msg .src { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; font-size: 12px; letter-spacing: -0.12px; white-space: normal; }
 .msg .src a { color: var(--primary); text-decoration: none; border: 1px solid var(--hairline); border-radius: 9999px; padding: 3px 10px; background: var(--canvas); }
 .msg .src .demo { color: var(--ink-48); border: 1px dashed var(--hairline); border-radius: 9999px; padding: 3px 10px; }
+.msg .src a.tel { background: var(--primary); color: #fff; border-color: var(--primary); padding: 6px 14px; font-size: 14px; }
 .msg .src .ai-badge { color: var(--ink-80); background: var(--canvas); border-radius: 9999px; padding: 3px 10px; font-weight: 600; }
 .chat-form input:disabled, .chat-form button:disabled, .chip:disabled { opacity: 0.5; cursor: default; }
 .msg.pending { color: var(--ink-48); }

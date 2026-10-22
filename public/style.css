@@ -1,0 +1,163 @@
+/* docs/디자인시스템/apple_design.md 를 따른다:
+   파란색 하나(#0066cc)만 누를 수 있는 것에 쓴다 · 그림자·그라데이션 없음 · 밝음↔어두움 타일 교대 · 본문 17px */
+:root {
+  --primary: #0066cc;
+  --primary-focus: #0071e3;
+  --primary-on-dark: #2997ff;
+  --canvas: #ffffff;
+  --parchment: #f5f5f7;
+  --pearl: #fafafc;
+  --tile-dark: #272729;
+  --black: #000000;
+  --ink: #1d1d1f;
+  --ink-80: #333333;
+  --ink-48: #7a7a7a;
+  --on-dark: #ffffff;
+  --muted-dark: #cccccc;
+  --divider-soft: #f0f0f0;
+  --hairline: #e0e0e0;
+  --font: system-ui, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", sans-serif;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--canvas);
+  color: var(--ink);
+  font: 400 17px/1.47 var(--font);
+  letter-spacing: -0.374px;
+  -webkit-font-smoothing: antialiased;
+}
+button, input, select { font: inherit; letter-spacing: inherit; }
+[hidden] { display: none !important; }
+
+.wrap { max-width: 980px; margin: 0 auto; padding: 0 16px; display: flex; align-items: center; gap: 20px; height: 100%; }
+.wrap-wide { max-width: 1200px; margin: 0 auto; padding: 0 16px; }
+
+/* 상단바 */
+.global-nav { background: var(--black); color: var(--on-dark); height: 44px; font-size: 12px; letter-spacing: -0.12px; }
+.global-nav .logo { font-weight: 600; font-size: 14px; }
+.global-nav .nav-note { color: var(--muted-dark); margin-left: auto; }
+
+.sub-nav {
+  position: sticky; top: 0; z-index: 10; height: 52px;
+  background: rgba(245, 245, 247, 0.8);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+.sub-title { font-size: 21px; font-weight: 600; letter-spacing: 0.231px; }
+.sub-links { margin-left: auto; display: flex; align-items: center; gap: 20px; font-size: 14px; }
+.sub-links a { color: var(--ink); text-decoration: none; }
+.sub-links a[aria-selected="true"] { color: var(--primary); }
+
+/* 버튼 */
+.btn-primary {
+  background: var(--primary); color: #fff; border: 0; border-radius: 9999px;
+  padding: 11px 22px; cursor: pointer; text-decoration: none; display: inline-block;
+}
+.btn-sm { padding: 6px 14px; font-size: 14px; }
+.btn-ghost {
+  background: transparent; color: var(--primary); border: 1px solid var(--primary); border-radius: 9999px;
+  padding: 11px 22px; text-decoration: none; display: inline-block;
+}
+.btn-pearl {
+  background: var(--pearl); color: var(--ink-80); border: 3px solid var(--divider-soft); border-radius: 11px;
+  padding: 8px 14px; font-size: 14px; cursor: pointer;
+}
+.btn-primary:active, .btn-ghost:active, .btn-pearl:active, .chip:active { transform: scale(0.95); }
+:focus-visible { outline: 2px solid var(--primary-focus); outline-offset: 2px; }
+.link-dark { background: none; border: 0; color: var(--primary-on-dark); cursor: pointer; padding: 0; font-size: 17px; }
+
+/* 타일 */
+.tile { padding: 80px 16px; text-align: center; }
+.tile-light { background: var(--canvas); }
+.tile-parchment { background: var(--parchment); }
+.tile-dark { background: var(--tile-dark); color: var(--on-dark); }
+.hero h1, .h-display { font-size: 56px; font-weight: 600; line-height: 1.07; letter-spacing: -0.28px; margin: 0 0 16px; }
+.tile-dark h2 { font-size: 40px; font-weight: 600; line-height: 1.1; margin: 0 0 12px; }
+.lead { font-size: 28px; line-height: 1.14; letter-spacing: 0.196px; margin: 0 auto 32px; max-width: 760px; }
+.lead-dark { font-size: 21px; color: var(--muted-dark); margin: 0 auto 20px; max-width: 680px; }
+.cta-row { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+.fine { font-size: 12px; color: var(--ink-48); letter-spacing: -0.12px; margin: 12px 0 0; }
+.admin-head { padding-bottom: 48px; }
+.admin-head .lead { margin-bottom: 8px; }
+
+/* 챗봇 */
+.chat-card {
+  max-width: 760px; margin: 0 auto; background: var(--canvas); border: 1px solid var(--hairline);
+  border-radius: 18px; padding: 24px; text-align: left;
+}
+.chat-log { height: 460px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding-bottom: 8px; }
+.msg { max-width: 82%; padding: 10px 16px; border-radius: 18px; white-space: pre-wrap; word-break: keep-all; overflow-wrap: anywhere; }
+.msg.bot { background: var(--parchment); align-self: flex-start; border-bottom-left-radius: 6px; }
+.msg.user { background: var(--primary); color: #fff; align-self: flex-end; border-bottom-right-radius: 6px; }
+.msg .src { display: block; margin-top: 8px; font-size: 12px; color: var(--ink-48); }
+.msg .src span { display: inline-block; border: 1px solid var(--hairline); border-radius: 9999px; padding: 2px 8px; margin: 4px 4px 0 0; }
+.msg.pending { color: var(--ink-48); }
+.summary { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin-top: 8px; font-size: 14px; }
+.summary dt { color: var(--ink-48); }
+.summary dd { margin: 0; }
+.tag { font-weight: 600; font-size: 21px; color: var(--ink); }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.chip {
+  background: var(--canvas); color: var(--ink); border: 1px solid var(--hairline); border-radius: 9999px;
+  padding: 8px 16px; font-size: 14px; cursor: pointer;
+}
+.chip.primary { border: 2px solid var(--primary-focus); color: var(--primary); }
+.chat-form { display: flex; gap: 8px; }
+.input-pill {
+  flex: 1; min-width: 0; height: 44px; border: 1px solid rgba(0, 0, 0, 0.08); border-radius: 9999px;
+  padding: 0 20px; background: var(--canvas); color: var(--ink);
+}
+
+/* 관리자 */
+.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 24px; }
+.stat { background: var(--canvas); border: 1px solid var(--hairline); border-radius: 18px; padding: 24px; text-align: left; }
+.stat b { display: block; font-size: 40px; font-weight: 600; line-height: 1.1; }
+.stat span { font-size: 14px; color: var(--ink-80); }
+.stat.focus b { color: var(--primary); }
+.toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; font-size: 14px; flex-wrap: wrap; }
+.toolbar .spacer { flex: 1; }
+.select { border: 1px solid var(--hairline); border-radius: 8px; padding: 6px 10px; background: var(--canvas); margin-left: 8px; font-size: 14px; }
+.card { background: var(--canvas); border: 1px solid var(--hairline); border-radius: 18px; padding: 24px; margin-bottom: 24px; text-align: left; }
+.card-title { font-size: 21px; font-weight: 600; margin: 0 0 12px; }
+.table-wrap { overflow-x: auto; }
+.table { width: 100%; border-collapse: collapse; font-size: 14px; letter-spacing: -0.224px; }
+.table th { text-align: left; font-weight: 600; color: var(--ink-48); padding: 8px 10px; border-bottom: 1px solid var(--hairline); white-space: nowrap; }
+.table td { padding: 12px 10px; border-bottom: 1px solid var(--divider-soft); white-space: nowrap; }
+.empty { color: var(--ink-48); font-size: 14px; }
+.group-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 16px; }
+.group { border: 1px solid var(--hairline); border-radius: 18px; padding: 20px; }
+.group b { display: block; font-size: 17px; font-weight: 600; }
+.group span { font-size: 14px; color: var(--ink-80); }
+.group ul { margin: 8px 0 0; padding-left: 18px; font-size: 14px; }
+
+/* 아래 */
+.footer { background: var(--parchment); color: var(--ink-80); padding: 64px 0; font-size: 12px; border-top: 1px solid var(--hairline); }
+.footer h3 { font-size: 14px; font-weight: 600; margin: 0 0 8px; }
+.footer ul { margin: 0 0 16px; padding-left: 18px; line-height: 2; }
+.legal { color: var(--ink-48); margin: 0; }
+
+@media (max-width: 1068px) { .hero h1, .h-display { font-size: 40px; } }
+@media (max-width: 833px) {
+  .global-nav .nav-note { display: none; }
+  .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  .group-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .tile { padding: 48px 16px; }
+  .hero h1, .h-display { font-size: 34px; }
+  .lead { font-size: 21px; }
+  .tile-dark h2 { font-size: 28px; }
+  .sub-title { font-size: 17px; }
+  .sub-links { gap: 12px; font-size: 12px; }
+  .chat-card { padding: 16px; }
+  .chat-log { height: 400px; }
+  .msg { max-width: 92%; }
+}
+@media (max-width: 419px) {
+  .hero h1, .h-display { font-size: 28px; }
+  .sub-links a[data-tab="admin"] { display: none; }
+}

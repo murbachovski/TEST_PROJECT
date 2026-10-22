@@ -1,2 +1,19 @@
-# TEST_PROJECT
-TEST_PROJECT
+# 홈드롭 예약 챗봇 (수업 시연용)
+
+집 앞에서 짐을 수거해 인천공항까지 옮겨 주는 「홈드롭」 예약을 챗봇이 받고, 관리자가 예약표로 보는 서비스입니다.
+AI기반 공공행정프로젝트 캡스톤디자인 1팀 시연용이며, 실제 예약·결제·수거는 이뤄지지 않습니다.
+
+## 구성
+- `public/` — 화면 (예약 챗봇 · 관리자 예약표)
+- `api/chat.js` — `docs/답변참고문서` 에 있는 내용으로만 답하는 문서 기반 답변
+- `api/flight.js` — 인천국제공항공사 여객편 주간 운항 현황(공공데이터포털)으로 항공편 찾기
+- `docs/답변참고문서/` — 답변 근거 문서
+
+## 환경변수 (Vercel → Settings → Environment Variables)
+| 이름 | 내용 | 없으면 |
+|---|---|---|
+| `INCHEON_FLY_INFO` | 공공데이터포털 OpenAPI KEY (Decoding) | 항공편 번호 형식만 확인 |
+| `GEMINI_API_KEYS` | Gemini 키, 쉼표로 여러 개 | 다음 키 → Groq |
+| `GROQ_API_KEYS` | Groq 키, 쉼표로 여러 개 | 문서 원문 발췌로 답변 |
+
+키는 코드와 `public/` 에 적지 않습니다.

@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>홈드롭 예약 챗봇</title>
+  <meta name="description" content="집 앞에서 짐을 수거해 인천공항까지 — 홈드롭 예약 챗봇 (수업 시연용)" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <nav class="global-nav" aria-label="전체 메뉴">
+    <div class="wrap">
+      <span class="logo">홈드롭</span>
+      <span class="nav-note">AI기반 공공행정 캡스톤디자인 · 1팀 · 시연용</span>
+    </div>
+  </nav>
+
+  <header class="sub-nav">
+    <div class="wrap">
+      <strong class="sub-title">홈드롭 예약</strong>
+      <div class="sub-links" role="tablist">
+        <a href="#chat" role="tab" data-tab="chat">예약 챗봇</a>
+        <a href="#admin" role="tab" data-tab="admin">관리자 예약표</a>
+        <button class="btn-primary btn-sm" id="startBookingTop" type="button">예약 시작</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- 고객 화면 -->
+    <section id="view-chat" class="view">
+      <section class="tile tile-light hero">
+        <h1>짐은 집 앞에서.<br />몸은 가볍게 공항으로.</h1>
+        <p class="lead">챗봇에게 「짐 맡기고 싶어요」라고 말해 보세요. 필요한 것을 하나씩 묻습니다.</p>
+        <div class="cta-row">
+          <button class="btn-primary" id="startBooking" type="button">예약 시작</button>
+          <a class="btn-ghost" href="#admin">관리자 예약표</a>
+        </div>
+      </section>
+
+      <section class="tile tile-parchment">
+        <div class="chat-card">
+          <div class="chat-log" id="chatLog" aria-live="polite"></div>
+          <div class="chips" id="chips"></div>
+          <form class="chat-form" id="chatForm" autocomplete="off">
+            <input id="chatInput" class="input-pill" maxlength="500" placeholder="예) 요금이 얼마예요? · 보조배터리도 맡길 수 있나요?" aria-label="메시지 입력" />
+            <button class="btn-primary" type="submit">보내기</button>
+          </form>
+          <p class="fine">⚠️ 시연용입니다. 실제 이름·전화번호·주소를 넣지 마세요. 답변은 「답변참고문서」에 있는 내용으로만 만듭니다.</p>
+        </div>
+      </section>
+
+      <section class="tile tile-dark">
+        <h2>맡기기 전에 꺼내 두세요.</h2>
+        <p class="lead-dark">보조배터리 · 전자담배 · 라이터는 위탁수하물로 보낼 수 없어 홈드롭으로도 맡길 수 없습니다.</p>
+        <button class="link-dark" type="button" data-ask="위탁수하물로 보낼 수 없는 물품은 무엇인가요?">무엇을 꺼내야 하는지 챗봇에게 묻기 ›</button>
+      </section>
+    </section>
+
+    <!-- 관리자 화면 -->
+    <section id="view-admin" class="view" hidden>
+      <section class="tile tile-light admin-head">
+        <h1 class="h-display">관리자 예약표</h1>
+        <p class="lead">챗봇이 받은 예약이 바로 들어옵니다. 배차는 관리자가 확정합니다.</p>
+        <p class="fine">시연용: 예약은 이 브라우저(localStorage)에만 저장됩니다.</p>
+      </section>
+
+      <section class="tile tile-parchment">
+        <div class="wrap-wide">
+          <div class="stat-grid" id="stats"></div>
+
+          <div class="toolbar">
+            <label>날짜
+              <select id="dateFilter" class="select"></select>
+            </label>
+            <span class="spacer"></span>
+            <button class="btn-pearl" id="seed" type="button">예시 예약 넣기</button>
+            <button class="btn-pearl" id="clearAll" type="button">모두 지우기</button>
+          </div>
+
+          <div class="card">
+            <h2 class="card-title">예약 목록</h2>
+            <div class="table-wrap">
+              <table class="table">
+                <thead>
+                  <tr><th>태그 번호</th><th>수거 시각</th><th>지역</th><th>예약자</th><th>항공편</th><th>짐</th><th>요금</th><th>상태</th></tr>
+                </thead>
+                <tbody id="rows"></tbody>
+              </table>
+            </div>
+            <p class="empty" id="empty" hidden>아직 예약이 없습니다. 챗봇에서 예약하거나 「예시 예약 넣기」를 누르세요.</p>
+          </div>
+
+          <div class="card">
+            <h2 class="card-title">배차 후보 묶음</h2>
+            <p class="fine">「수거 대기」 예약을 수거 날짜 · 2시간 단위 시간대 · 지역(시·구)으로 묶었습니다. 최종 배차는 관리자가 확정합니다.</p>
+            <div class="group-grid" id="groups"></div>
+          </div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap-wide">
+      <h3>참고 자료</h3>
+      <ul>
+        <li>인천국제공항공사_여객편 주간 운항 현황 (공공데이터포털)</li>
+        <li>인천국제공항 누리집 「이지드랍」 안내</li>
+        <li>위탁수하물 금지물품 — 한국공항공사 안내 보도</li>
+      </ul>
+      <p class="legal">수업 시연용 서비스입니다. 실제 예약·결제·수거가 이뤄지지 않습니다. 요금·수거 시각·적재 한도는 시연용 가정 값입니다. AI 는 접수 보조까지만 하며 배차·탑승 가능 여부를 결정하지 않습니다.</p>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

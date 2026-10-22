@@ -81,7 +81,7 @@ async function gemini(시스템, 메시지) {
           }),
         }
       );
-      if (!r.ok) continue; // 한도 초과·키 오류 → 다음 키
+      if (!r.ok) { console.error("gemini 실패", r.status); continue; } // 한도 초과·키 오류 → 다음 키 (키 값은 남기지 않는다)
       const data = await r.json();
       const 글 = data?.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("").trim();
       if (글) return 글;
@@ -106,7 +106,7 @@ async function groq(시스템, 메시지) {
           max_tokens: 800,
         }),
       });
-      if (!r.ok) continue;
+      if (!r.ok) { console.error("groq 실패", r.status); continue; }
       const data = await r.json();
       const 글 = String(data?.choices?.[0]?.message?.content || "")
         .replace(/<think>[\s\S]*?<\/think>/g, "")

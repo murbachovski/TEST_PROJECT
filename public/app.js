@@ -33,6 +33,29 @@ function 오늘부터(일) {
   return new Date(오늘.getTime() + 일 * 86400000);
 }
 
+// 「2026-10-25 14:30」「10/25 14:30」「10월 25일 오후 2시 30분」「내일 오후 2시」 → ISO(+09:00). 못 읽으면 null
+function 날짜읽기(v) {
+  const 오늘 = kst날짜(new Date());
+  let y = Number(오늘.slice(0, 4)), mo, d;
+  let m;
+  if ((m = v.match(/(\d{4})\s*[-./년]\s*(\d{1,2})\s*[-./월]\s*(\d{1,2})/))) [, y, mo, d] = m.map(Number);
+  else if ((m = v.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/)) || (m = v.match(/(?:^|\s)(\d{1,2})\s*[/.-]\s*(\d{1,2})(?=\s|$)/))) [, mo, d] = m.map(Number);
+  else if ((m = v.match(/오늘|내일|모레/))) {
+    const t = 오늘부터({ 오늘: 0, 내일: 1, 모레: 2 }[m[0]]);
+    [y, mo, d] = kst날짜(t).split("-").map(Number);
+  } else return null;
+
+  let h, mi = 0;
+  if ((m = v.match(/(\d{1,2}):(\d{2})/))) [h, mi] = [Number(m[1]), Number(m[2])];
+  else if ((m = v.match(/(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분|\s*반)?/))) [h, mi] = [Number(m[1]), m[2] ? Number(m[2]) : /반/.test(m[0]) ? 30 : 0];
+  else return null;
+  if (/오후|저녁|밤/.test(v) && h < 12) h += 12;
+  if (/오전|새벽/.test(v) && h === 12) h = 0;
+  if (!(mo >= 1 && mo <= 12 && d >= 1 && d <= 31 && h >= 0 && h <= 23 && mi >= 0 && mi <= 59)) return null;
+  const p = (n) => String(n).padStart(2, "0");
+  return `${y}-${p(mo)}-${p(d)}T${p(h)}:${p(mi)}:00+09:00`;
+}
+
 function 불러오기() {
   try { return JSON.parse(localStorage.getItem(저장키)) || []; } catch { return []; }
 }
@@ -50,17 +73,38 @@ function 말풍선(who, text, extra) {
   log.scrollTop = log.scrollHeight;
   return el;
 }
-function 근거표시(files) {
-  if (!files || !files.length) return null;
-  const s = document.createElement("span");
-  s.className = "src";
-  s.append("근거 문서");
-  for (const f of files) {
-    const c = document.createElement("span");
-    c.textContent = f;
-    s.appendChild(c);
+// 답 아래 덧붙임: 「AI 생성 답변」 표시 + 출처(기관·페이지 이름과 링크)
+function 출처표시(sources, mode) {
+  const box = document.createElement("span");
+  box.className = "src";
+  if (mode === "ai") {
+    const ai = document.createElement("span");
+    ai.className = "ai-badge";
+    ai.textContent = "AI 생성 답변";
+    box.appendChild(ai);
   }
-  return s;
+  for (const s of sources || []) {
+    if (s.url && /^https:\/\//.test(s.url)) {
+      const a = document.createElement("a");
+      a.href = s.url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.textContent = s.label + " ↗";
+      box.appendChild(a);
+    } else {
+      const t = document.createElement("span");
+      t.className = "demo";
+      t.textContent = s.label;
+      box.appendChild(t);
+    }
+  }
+  return box.childNodes.length ? box : null;
+}
+
+function 입력잠금(잠금) {
+  input.disabled = 잠금;
+  $("#chatForm button").disabled = 잠금;
+  chips.querySelectorAll("button").forEach((b) => (b.disabled = 잠금));
 }
 function 선택지(list) {
   chips.innerHTML = "";
@@ -77,7 +121,8 @@ function 선택지(list) {
 // ───────── 자유 질문 ─────────
 const 대화 = [];
 async function 질문하기(q) {
-  const wait = 말풍선("bot pending", "문서를 찾고 있어요…");
+  const wait = 말풍선("bot pending", "드롭이가 안내 자료를 찾고 있어요…");
+  입력잠금(true);
   try {
     const r = await fetch("/api/chat", {
       method: "POST",
@@ -87,21 +132,24 @@ async function 질문하기(q) {
     const d = await r.json();
     wait.remove();
     const 답 = d.answer || d.error || "답을 만들지 못했어요.";
-    말풍선("bot", 답, 근거표시(d.sources));
+    말풍선("bot", 답, 출처표시(d.sources, d.mode));
     대화.push({ role: "user", content: q }, { role: "assistant", content: 답 });
   } catch {
     wait.remove();
     말풍선("bot", "서버에 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요.");
   }
+  입력잠금(false);
   기본선택지();
+  input.focus();
 }
 
 function 기본선택지() {
   선택지([
     { label: "예약 시작", primary: true, run: 예약시작 },
-    { label: "요금이 얼마예요?", run: () => 질문하기("요금이 얼마예요?") },
+    { label: "짐 3개면 얼마예요?", run: () => 질문하기("짐 3개면 요금이 얼마예요?") },
     { label: "보조배터리도 맡길 수 있나요?", run: () => 질문하기("보조배터리도 맡길 수 있나요?") },
-    { label: "이지드랍과 뭐가 달라요?", run: () => 질문하기("이지드랍은 어떤 서비스이고 홈드롭과 뭐가 달라요?") },
+    { label: "몇 시에 수거해 가요?", run: () => 질문하기("수거는 몇 시에 해 가나요?") },
+    { label: "제2터미널 항공사는?", run: () => 질문하기("인천공항 제2터미널을 쓰는 항공사는 어디예요?") },
   ]);
 }
 
@@ -145,11 +193,18 @@ const 단계 = {
       if (!/^[A-Z0-9]{2}\d{1,4}$/.test(편)) return "항공편 번호는 영문 2자리 + 숫자예요. 예: KE703";
       예약.flight = 편;
       const 찾는중 = 말풍선("bot pending", "인천공항 운항 현황에서 찾는 중…");
+      입력잠금(true);
       let d = null;
       try { d = await (await fetch("/api/flight?flight=" + encodeURIComponent(편))).json(); } catch { /* 형식 확인으로 */ }
       찾는중.remove();
+      입력잠금(false);
       const 범위 = (f) => { const t = new Date(f.departure); return t >= new Date() && t < 오늘부터(7); };
-      const 후보 = (d && d.flights ? d.flights : []).filter(범위);
+      const 전체 = d && d.flights ? d.flights : [];
+      const 후보 = 전체.filter(범위);
+      if (전체.length && !후보.length) {
+        말풍선("bot", `${편}편은 운항 현황에 있지만, 예약할 수 있는 출발편이 없어요(오늘 편은 이미 출발했거나 6일 뒤를 넘었어요). 다른 항공편 번호를 알려 주세요.`);
+        return "대기";
+      }
       if (후보.length) {
         말풍선("bot", `${편}편을 찾았어요. 출발 날짜를 골라 주세요. (오늘~6일 뒤, 인천국제공항공사 운항 현황)`);
         선택지(후보.map((f) => ({
@@ -165,9 +220,8 @@ const 단계 = {
   출발시각: {
     묻기: () => `출발 날짜와 시각을 적어 주세요. 오늘부터 6일 뒤(${kst날짜(오늘부터(6))})까지만 예약할 수 있어요. (예: ${kst날짜(오늘부터(2))} 14:30)`,
     받기(v) {
-      const m = v.match(/(\d{4})[-./]\s?(\d{1,2})[-./]\s?(\d{1,2})\D+(\d{1,2}):(\d{2})/);
-      if (!m) return "「2026-10-25 14:30」처럼 날짜와 시각을 함께 적어 주세요.";
-      const iso = `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}T${m[4].padStart(2, "0")}:${m[5]}:00+09:00`;
+      const iso = 날짜읽기(v);
+      if (!iso) return "「10/25 14:30」이나 「10월 25일 오후 2시 30분」처럼 날짜와 시각을 함께 적어 주세요.";
       const t = new Date(iso);
       if (isNaN(t)) return "날짜를 읽지 못했어요. 다시 적어 주세요.";
       if (t < new Date() || t >= 오늘부터(7)) return `오늘부터 ${kst날짜(오늘부터(6))}까지 출발편만 예약할 수 있어요.`;
@@ -415,6 +469,6 @@ function 화면() {
 window.addEventListener("hashchange", 화면);
 window.addEventListener("storage", () => location.hash === "#admin" && 관리자그리기());
 
-말풍선("bot", "안녕하세요, 홈드롭 예약 챗봇이에요. 집 앞에서 짐을 수거해 인천공항까지 옮겨 드리는 서비스(수업 시연용)예요.\n예약하시려면 「예약 시작」, 궁금한 점은 편하게 물어보세요.");
+말풍선("bot", "안녕하세요, 홈드롭 안내 도우미 「드롭이」예요. 무거운 짐은 집 앞에서 받아 인천공항까지 옮겨 드릴게요(수업 시연용).\n예약은 「예약 시작」을 눌러 주시고, 요금·수거 시간·맡길 수 없는 물품·공항 이용이 궁금하면 편하게 물어보세요.");
 기본선택지();
 화면();

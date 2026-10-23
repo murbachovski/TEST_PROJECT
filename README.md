@@ -18,5 +18,10 @@ AI기반 공공행정프로젝트 캡스톤디자인 1팀 시연용이며, 실�
 | `INCHEON_FLY_INFO` | 공공데이터포털 OpenAPI KEY (Decoding) | 항공편 번호 형식만 확인 |
 | `GEMINI_API_KEYS` | Gemini 키, 쉼표로 여러 개 (답변 생성 + 임베딩) | 다음 키 → Groq · 키워드 검색 |
 | `GROQ_API_KEYS` | Groq 키, 쉼표로 여러 개 | 문서 원문 발췌로 답변 |
+| `KV_REST_API_URL` · `KV_REST_API_TOKEN` | 예약 저장소(Upstash Redis, Vercel 마켓플레이스로 연결하면 자동으로 생김) | 예약 접수·관리자표 사용 불가 |
+| `ADMIN_PASSWORD` | 관리자 예약표 비밀번호 (12자 이상 권장) | 관리자 로그인 불가 |
+| `RAG_MIN_SCORE` | (선택) 이 유사도보다 낮으면 AI 를 부르지 않고 「자료에 없다」로 답함 | 0 = 끄기 |
+
+예약은 서버 저장소에 30일 동안만 보관되고 자동으로 지워집니다. 관리자 예약표는 비밀번호로 로그인한 사람만 볼 수 있습니다.
 
 키는 코드와 `public/` 에 적지 않습니다.

@@ -35,8 +35,24 @@ module.exports = async (req, res) => {
   return res.json({ found: 찾음.length > 0, source: "data.go.kr", flights: 찾음 });
 };
 
+let 받는중 = null;
+let 실패시각 = 0;
+
+// 동시에 들어온 요청은 진행 중인 호출 하나를 함께 기다리고, 실패하면 2분 동안 다시 부르지 않는다 (하루 500회 한도 보호)
 async function 운항목록() {
   if (캐시.목록 && Date.now() - 캐시.시각 < 캐시_분 * 60 * 1000) return 캐시.목록;
+  if (Date.now() - 실패시각 < 2 * 60 * 1000) return 캐시.목록; // 실패 직후엔 예전 자료라도 쓴다
+  if (!받는중) {
+    받는중 = 불러오기().then((목록) => {
+      if (목록) 캐시 = { 시각: Date.now(), 목록 };
+      else 실패시각 = Date.now();
+      return 목록 || 캐시.목록;
+    }).finally(() => (받는중 = null));
+  }
+  return 받는중;
+}
+
+async function 불러오기() {
   const key = String(process.env.INCHEON_FLY_INFO || "").trim();
   if (!key) return null;
   try {
@@ -48,9 +64,7 @@ async function 운항목록() {
     const r = await fetch(u, { signal: ctl.signal }).finally(() => clearTimeout(t));
     const data = await r.json();
     if (data?.response?.header?.resultCode !== "00") return null;
-    const 목록 = data.response.body.items || [];
-    캐시 = { 시각: Date.now(), 목록 };
-    return 목록;
+    return data.response.body.items || [];
   } catch {
     return null;
   }

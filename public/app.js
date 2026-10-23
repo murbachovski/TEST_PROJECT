@@ -1,11 +1,11 @@
 // 홈드롭 예약 챗봇 화면.
-// - 자유 질문 → /api/chat (답변참고문서 근거 답변)
-// - 예약 → 정해진 순서로 하나씩 묻는다 (AI 키가 없어도 동작)
-// - 접수된 예약 → 관리자 예약표 (시연용: 이 브라우저 localStorage 에만 저장)
+// - 자유 질문 → /api/chat (안내 자료 근거 답변, 출처 링크)
+// - 예약 → 정해진 순서로 하나씩 묻고 /api/bookings 에 접수 (서버가 다시 검사하고 태그 번호를 매긴다)
+// - 관리자 예약표 → 비밀번호로 로그인한 관리자만 /api/bookings 를 읽고 상태를 바꾼다
 
-const 저장키 = "homedrop.bookings.v1";
 const 지역 = ["서울", "인천", "경기"];
 const 상태목록 = ["수거 대기", "배차 확정", "수거 완료", "취소"];
+const 출입증키 = "homedrop.admin.token";
 
 const $ = (s) => document.querySelector(s);
 const log = $("#chatLog");
@@ -13,7 +13,7 @@ const chips = $("#chips");
 const input = $("#chatInput");
 
 // ───────── 공통 ─────────
-const 원 = (n) => n.toLocaleString("ko-KR") + "원";
+const 원 = (n) => Number(n).toLocaleString("ko-KR") + "원";
 const 요금 = (짐) => 30000 + 25000 * (짐 - 1);
 
 function kst(date, opts) {
@@ -56,11 +56,19 @@ function 날짜읽기(v) {
   return `${y}-${p(mo)}-${p(d)}T${p(h)}:${p(mi)}:00+09:00`;
 }
 
-function 불러오기() {
-  try { return JSON.parse(localStorage.getItem(저장키)) || []; } catch { return []; }
-}
-function 저장(list) {
-  try { localStorage.setItem(저장키, JSON.stringify(list)); } catch { /* 저장 불가 환경 */ }
+// 서버 호출. 응답 본문이 JSON 이 아니어도(빈 400 등) 오류 문구를 만들어 준다
+async function 요청(url, opts = {}) {
+  const 출입증 = 관리자출입증();
+  const headers = { "Content-Type": "application/json", ...(출입증 ? { Authorization: "Bearer " + 출입증 } : {}), ...(opts.headers || {}) };
+  const r = await fetch(url, { ...opts, headers });
+  let d = {};
+  try { d = await r.json(); } catch { /* 빈 본문 */ }
+  if (!r.ok) {
+    const e = new Error(d.error || `요청이 실패했어요 (${r.status})`);
+    e.status = r.status;
+    throw e;
+  }
+  return d;
 }
 
 // ───────── 채팅 그리기 ─────────
@@ -73,6 +81,17 @@ function 말풍선(who, text, extra) {
   log.scrollTop = log.scrollHeight;
   return el;
 }
+
+function 기다림() {
+  const el = document.createElement("div");
+  el.className = "msg bot typing";
+  el.setAttribute("aria-label", "드롭이가 답을 준비하고 있어요");
+  el.innerHTML = "<i></i><i></i><i></i>";
+  log.appendChild(el);
+  log.scrollTop = log.scrollHeight;
+  return el;
+}
+
 // 답 아래 덧붙임: 「AI 생성 답변」 표시 + 출처(기관·페이지 이름과 링크)
 function 출처표시(sources, mode) {
   const box = document.createElement("span");
@@ -129,24 +148,18 @@ function 선택지(list) {
 }
 
 // ───────── 자유 질문 ─────────
-const 대화 = [];
+const 대화 = []; // 이용자가 한 질문만 (서버도 AI 답은 받지 않는다)
 async function 질문하기(q) {
-  const wait = 말풍선("bot pending", "드롭이가 안내 자료를 찾고 있어요…");
+  const wait = 기다림();
   입력잠금(true);
   try {
-    const r = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question: q, history: 대화.slice(-6) }),
-    });
-    const d = await r.json();
+    const d = await 요청("/api/chat", { method: "POST", body: JSON.stringify({ question: q, history: 대화.slice(-6) }) });
     wait.remove();
-    const 답 = d.answer || d.error || "답을 만들지 못했어요.";
-    말풍선("bot", 답, 출처표시(d.sources, d.mode));
-    대화.push({ role: "user", content: q }, { role: "assistant", content: 답 });
-  } catch {
+    말풍선("bot", d.answer || "답을 만들지 못했어요.", 출처표시(d.sources, d.mode));
+    대화.push({ role: "user", content: q });
+  } catch (e) {
     wait.remove();
-    말풍선("bot", "서버에 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요.");
+    말풍선("bot", e.status ? e.message : "서버에 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요.");
   }
   입력잠금(false);
   기본선택지();
@@ -163,8 +176,22 @@ function 기본선택지() {
   ]);
 }
 
+const 첫인사 = "안녕하세요, 홈드롭 안내 도우미 「드롭이」예요. 무거운 짐은 집 앞에서 받아 인천공항까지 옮겨 드릴게요(수업 시연용).\n예약은 「예약 시작」을 눌러 주시고, 요금·수거 시간·맡길 수 없는 물품·공항 이용이 궁금하면 편하게 물어보세요.";
+
+function 대화새로() {
+  log.innerHTML = "";
+  대화.length = 0;
+  예약 = null;
+  지금단계 = null;
+  진행표시();
+  말풍선("bot", 첫인사);
+  기본선택지();
+}
+
 // ───────── 예약 (하나씩 묻기) ─────────
 let 예약 = null; // 진행 중인 예약. null 이면 자유 질문 모드
+let 지금단계 = null;
+const 순서 = ["이름", "연락처", "주소", "항공편", "짐", "수거시각", "확인"];
 
 const 단계 = {
   이름: {
@@ -191,8 +218,6 @@ const 단계 = {
       if (!시) return "주소는 서울·인천·경기로 시작하게 적어 주세요. (시연용 수거 가능 지역)";
       if (v.length < 6) return "주소를 조금 더 자세히 적어 주세요.";
       예약.address = v;
-      const 구 = v.split(/\s+/)[1] || "";
-      예약.region = 시 + (구 ? " " + 구 : "");
     },
     다음: "항공편",
   },
@@ -205,7 +230,7 @@ const 단계 = {
       const 찾는중 = 말풍선("bot pending", "인천공항 운항 현황에서 찾는 중…");
       입력잠금(true);
       let d = null;
-      try { d = await (await fetch("/api/flight?flight=" + encodeURIComponent(편))).json(); } catch { /* 형식 확인으로 */ }
+      try { d = await 요청("/api/flight?flight=" + encodeURIComponent(편)); } catch { /* 형식 확인으로 */ }
       찾는중.remove();
       입력잠금(false);
       const 범위 = (f) => { const t = new Date(f.departure); return t >= new Date() && t < 오늘부터(7); };
@@ -242,7 +267,7 @@ const 단계 = {
   },
   짐: {
     묻기: "맡기실 짐은 몇 개인가요? (1~5개, 1개당 32kg·세 변 합 203cm 이하 — 시연용 기준)",
-    칩: () => [1, 2, 3, 4, 5].map((n) => ({ label: n + "개", run: () => 받아서(String(n)) })),
+    칩: () => [1, 2, 3, 4, 5].map((n) => ({ label: `${n}개 · ${원(요금(n))}`, run: () => 받아서(String(n)) })),
     받기(v) {
       const n = Number((v.match(/\d+/) || [])[0]);
       if (!(n >= 1 && n <= 5)) return "짐은 1~5개까지 받아요. 숫자로 알려 주세요.";
@@ -255,7 +280,7 @@ const 단계 = {
     묻기() {
       const 출발 = new Date(예약.departure);
       const 지금 = Date.now();
-      // 시연용 규칙: 08~20시 짝수 정각, 출발 6~30시간 전, 지금부터 2시간 이후, 출발에 가까운 3개
+      // 시연용 규칙: 08~20시 짝수 정각, 출발 6~30시간 전, 지금부터 2시간 이후, 출발에 가까운 3개 (서버도 같은 규칙으로 다시 검사)
       const 후보 = [];
       for (let 일 = -2; 일 <= 0; 일++) {
         const 날 = kst날짜(new Date(출발.getTime() + 일 * 86400000));
@@ -268,8 +293,9 @@ const 단계 = {
       후보.sort((a, b) => b - a).splice(3);
       if (!후보.length) {
         예약 = null;
+        진행표시();
         기본선택지();
-        return "죄송해요. 이 항공편은 시연용 수거 규칙(08~20시, 출발 6~30시간 전, 지금부터 2시간 이후)에 맞는 수거 시각이 없어요. 공항 카운터나 이지드랍 이용을 검토해 주세요.";
+        return "죄송해요. 이 항공편은 수거 규칙(08~20시, 출발 6~30시간 전, 지금부터 2시간 이후)에 맞는 수거 시각이 없어요. 공항 카운터나 이지드랍 이용을 검토해 주세요.";
       }
       선택지(후보.map((t) => ({ label: 보기시각(t) + " 수거", run: () => { 예약.pickup = t.toISOString(); 이동("확인"); } })));
       return `출발 시각 ${보기시각(출발)} 기준으로 가능한 수거 시각이에요. 하나를 골라 주세요.`;
@@ -278,35 +304,52 @@ const 단계 = {
   },
   확인: {
     묻기() {
-      const dl = document.createElement("dl");
-      dl.className = "summary";
-      const 줄 = [
+      말풍선("bot", "아래 내용으로 접수할까요? 보조배터리·전자담배·라이터는 짐에서 꺼내 주세요.", 요약표([
         ["예약자", 예약.name], ["연락처", 예약.phone], ["수거 주소", 예약.address],
         ["항공편", `${예약.flight}${예약.airline ? " (" + 예약.airline + ")" : ""}`],
         ["출발", `${보기시각(new Date(예약.departure))} · ${예약.terminal}`],
         ["수거", 보기시각(new Date(예약.pickup))], ["짐", 예약.bags + "개"], ["요금(시연용)", 원(예약.fee)],
-      ];
-      for (const [k, v] of 줄) {
-        const dt = document.createElement("dt"); dt.textContent = k;
-        const dd = document.createElement("dd"); dd.textContent = v;
-        dl.append(dt, dd);
-      }
-      말풍선("bot", "아래 내용으로 접수할까요? 보조배터리·전자담배·라이터는 짐에서 꺼내 주세요.", dl);
-      선택지([
-        { label: "이대로 접수", primary: true, run: 접수 },
-        { label: "처음부터 다시", run: 예약시작 },
-        { label: "그만두기", run: 그만두기 },
-      ]);
+      ]));
+      확인선택지();
       return "대기";
     },
     받기: () => "아래 버튼으로 접수 여부를 골라 주세요.",
   },
 };
 
-let 지금단계 = null;
+function 요약표(줄) {
+  const dl = document.createElement("dl");
+  dl.className = "summary";
+  for (const [k, v] of 줄) {
+    const dt = document.createElement("dt"); dt.textContent = k;
+    const dd = document.createElement("dd"); dd.textContent = v;
+    dl.append(dt, dd);
+  }
+  return dl;
+}
+
+function 확인선택지() {
+  선택지([
+    { label: "이대로 접수", primary: true, run: 접수 },
+    { label: "처음부터 다시", run: 예약시작 },
+    { label: "그만두기", run: 그만두기 },
+  ]);
+}
+
+// 예약 진행 표시 (몇 번째 단계인지)
+function 진행표시() {
+  const el = $("#progress");
+  if (!예약 || !지금단계) { el.hidden = true; return; }
+  const 이름 = 지금단계 === "출발시각" ? "항공편" : 지금단계;
+  const i = 순서.indexOf(이름);
+  el.hidden = false;
+  el.querySelector("span").textContent = `예약 ${i + 1} / ${순서.length} · ${{ 이름: "성함", 연락처: "연락처", 주소: "수거 주소", 항공편: "항공편", 짐: "짐 개수", 수거시각: "수거 시각", 확인: "확인" }[이름]}`;
+  el.querySelector("i").style.width = `${((i + 1) / 순서.length) * 100}%`;
+}
 
 function 이동(이름) {
   지금단계 = 이름;
+  진행표시();
   const s = 단계[이름];
   const 글 = typeof s.묻기 === "function" ? s.묻기() : s.묻기;
   if (글 && 글 !== "대기") 말풍선("bot", 글);
@@ -325,7 +368,7 @@ async function 받아서(v) {
 }
 
 function 예약시작() {
-  예약 = { id: Date.now().toString(36) };
+  예약 = {};
   이동("이름");
   input.focus();
 }
@@ -333,27 +376,51 @@ function 예약시작() {
 function 그만두기() {
   예약 = null;
   지금단계 = null;
+  진행표시();
   말풍선("bot", "예약을 멈췄어요. 궁금한 점을 물어보셔도 돼요.");
   기본선택지();
 }
 
-function 접수() {
-  const list = 불러오기();
-  const 날 = kst날짜(new Date()).slice(2).replace(/-/g, "");
-  const 같은날 = list.filter((b) => b.tag.startsWith("HD-" + 날)).length;
-  const tag = `HD-${날}-${String(같은날 + 1).padStart(4, "0")}`;
-  list.push({ ...예약, tag, status: "수거 대기", createdAt: new Date().toISOString() });
-  저장(list);
-  const t = document.createElement("div");
-  t.className = "tag";
-  t.textContent = tag;
-  말풍선("bot", "접수되었어요. 태그 번호를 짐에 적어 두세요. 배차는 관리자가 확인 후 확정합니다.", t);
-  예약 = null;
-  지금단계 = null;
-  선택지([
-    { label: "관리자 예약표 보기", primary: true, run: () => (location.hash = "#admin") },
-    { label: "새 예약", run: 예약시작 },
-  ]);
+async function 접수() {
+  const wait = 말풍선("bot pending", "예약을 접수하고 있어요…");
+  입력잠금(true);
+  try {
+    const d = await 요청("/api/bookings", { method: "POST", body: JSON.stringify(예약) });
+    wait.remove();
+    접수증(d.booking);
+    예약 = null;
+    지금단계 = null;
+    진행표시();
+    선택지([
+      { label: "새 예약", primary: true, run: 예약시작 },
+      { label: "보조배터리 맡길 수 있나요?", run: () => 질문하기("보조배터리도 맡길 수 있나요?") },
+    ]);
+  } catch (e) {
+    wait.remove();
+    말풍선("bot", `접수하지 못했어요. ${e.message}`);
+    확인선택지();
+  }
+  입력잠금(false);
+}
+
+function 접수증(b) {
+  const box = document.createElement("div");
+  box.className = "receipt";
+  const 태그 = document.createElement("div");
+  태그.className = "tag";
+  태그.textContent = b.tag;
+  const 복사 = document.createElement("button");
+  복사.type = "button";
+  복사.className = "copy";
+  복사.textContent = "태그 번호 복사";
+  복사.onclick = async () => {
+    try { await navigator.clipboard.writeText(b.tag); 복사.textContent = "복사했어요"; } catch { 복사.textContent = "직접 적어 두세요"; }
+  };
+  box.append(태그, 복사, 요약표([
+    ["수거", 보기시각(new Date(b.pickup))], ["수거 주소", b.address],
+    ["항공편", `${b.flight} · ${보기시각(new Date(b.departure))}`], ["짐 · 요금", `${b.bags}개 · ${원(b.fee)} (시연용)`],
+  ]));
+  말풍선("bot", "접수되었어요. 태그 번호를 짐에 적어 두세요. 수거 차량 배차는 관리자가 확인한 뒤 확정합니다.", box);
 }
 
 // 입력창
@@ -368,6 +435,7 @@ $("#chatForm").addEventListener("submit", (e) => {
     if (/죽고\s*싶|자살|자해|살기\s*싫|사라지고\s*싶|목숨|극단\s*적/.test(v)) {
       예약 = null;
       지금단계 = null;
+      진행표시();
       선택지([]);
       return 질문하기(v);
     }
@@ -375,58 +443,104 @@ $("#chatForm").addEventListener("submit", (e) => {
     선택지([]);
     return 받아서(v);
   }
-  if (/예약|맡기|맡길래|수거해/.test(v) && !/요금|얼마|취소|변경|기간/.test(v)) return 예약시작();
+  if (/예약|맡기|맡길래|수거해/.test(v) && !/요금|얼마|취소|변경|기간|어떻게|방법|\?/.test(v)) return 예약시작();
   선택지([]);
   질문하기(v);
 });
 
-$("#startBooking").onclick = () => { location.hash = "#chat"; 말풍선("user", "예약 시작"); 예약시작(); };
+function 채팅으로() {
+  if (location.hash === "#admin") location.hash = "#chat";
+  $(".chat-card").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+$("#startBooking").onclick = () => { 채팅으로(); 말풍선("user", "예약 시작"); 예약시작(); };
 $("#startBookingTop").onclick = $("#startBooking").onclick;
+$("#resetChat").onclick = 대화새로;
 document.querySelectorAll("[data-ask]").forEach((b) =>
-  b.addEventListener("click", () => { 말풍선("user", b.dataset.ask); 질문하기(b.dataset.ask); log.scrollIntoView({ behavior: "smooth", block: "center" }); })
+  b.addEventListener("click", () => { 채팅으로(); 말풍선("user", b.dataset.ask); 질문하기(b.dataset.ask); })
 );
 
 // ───────── 관리자 예약표 ─────────
+let 예약목록 = [];
+
+function 관리자출입증() {
+  try {
+    const t = sessionStorage.getItem(출입증키);
+    if (t && Number(t.split(".")[0]) > Date.now()) return t;
+  } catch { /* 저장 불가 환경 */ }
+  return null;
+}
+function 출입증저장(t) {
+  try { t ? sessionStorage.setItem(출입증키, t) : sessionStorage.removeItem(출입증키); } catch { /* 무시 */ }
+}
+
+function 관리자상태(로그인) {
+  $("#adminLogin").hidden = 로그인;
+  $("#adminBoard").hidden = !로그인;
+}
+
+async function 관리자열기() {
+  if (!관리자출입증()) return 관리자상태(false);
+  관리자상태(true);
+  await 목록불러오기();
+}
+
+async function 목록불러오기() {
+  $("#adminMsg").textContent = "불러오는 중…";
+  try {
+    예약목록 = (await 요청("/api/bookings")).bookings;
+    $("#adminMsg").textContent = `${kst(new Date(), { hour: "2-digit", minute: "2-digit", hourCycle: "h23" })} 기준`;
+    관리자그리기();
+  } catch (e) {
+    if (e.status === 401) { 출입증저장(null); 관리자상태(false); $("#loginMsg").textContent = "로그인이 만료되었어요. 다시 로그인해 주세요."; return; }
+    $("#adminMsg").textContent = e.message;
+  }
+}
+
+async function 상태바꾸기(tags, status) {
+  try {
+    예약목록 = (await 요청("/api/bookings", { method: "PATCH", body: JSON.stringify({ tags, status }) })).bookings;
+    관리자그리기();
+  } catch (e) {
+    $("#adminMsg").textContent = e.message;
+  }
+}
+
 function 관리자그리기() {
-  const list = 불러오기().sort((a, b) => a.pickup.localeCompare(b.pickup));
   const sel = $("#dateFilter");
-  const 날짜들 = [...new Set(list.map((b) => kst날짜(new Date(b.pickup))))];
+  const 날짜들 = [...new Set(예약목록.map((b) => kst날짜(new Date(b.pickup))))];
   const 고른날 = sel.value;
-  sel.innerHTML = '<option value="">전체</option>' + 날짜들.map((d) => `<option>${d}</option>`).join("");
+  sel.innerHTML = '<option value="">전체</option>' + 날짜들.map((d) => `<option>${esc(d)}</option>`).join("");
   sel.value = 날짜들.includes(고른날) ? 고른날 : "";
-  const 보기 = list.filter((b) => !sel.value || kst날짜(new Date(b.pickup)) === sel.value);
+  const 찾기 = $("#adminSearch").value.trim();
+  const 보기 = 예약목록.filter((b) =>
+    (!sel.value || kst날짜(new Date(b.pickup)) === sel.value) &&
+    (!찾기 || [b.tag, b.name, b.flight, b.region].some((x) => String(x).includes(찾기))));
 
   const 수 = (st) => 보기.filter((b) => b.status === st).length;
   $("#stats").innerHTML = [
     ["전체 예약", 보기.length, ""], ["수거 대기", 수("수거 대기"), "focus"],
     ["배차 확정", 수("배차 확정"), ""], ["수거 완료", 수("수거 완료"), ""],
-  ].map(([k, v, c]) => `<div class="stat ${c}"><b>${v}</b><span>${k}</span></div>`).join("");
+  ].map(([k, v, c]) => `<div class="stat ${c}"><b>${Number(v)}</b><span>${k}</span></div>`).join("");
 
   const tbody = $("#rows");
   tbody.innerHTML = "";
   for (const b of 보기) {
     const tr = document.createElement("tr");
-    const 칸 = [b.tag, 보기시각(new Date(b.pickup)), b.region, b.name, `${b.flight} · ${b.terminal}`, b.bags + "개", 원(b.fee)];
+    const 칸 = [b.tag, 보기시각(new Date(b.pickup)), b.region, b.name, b.phone, `${b.flight} · ${b.terminal}`, Number(b.bags) + "개", 원(b.fee)];
     for (const v of 칸) { const td = document.createElement("td"); td.textContent = v; tr.appendChild(td); }
     const td = document.createElement("td");
     const s = document.createElement("select");
-    s.className = "select";
+    s.className = "select status-" + 상태목록.indexOf(b.status);
     s.setAttribute("aria-label", b.tag + " 상태");
-    s.innerHTML = 상태목록.map((x) => `<option${x === b.status ? " selected" : ""}>${x}</option>`).join("");
-    s.onchange = () => {
-      const all = 불러오기();
-      const t = all.find((x) => x.tag === b.tag);
-      if (t) t.status = s.value;
-      저장(all);
-      관리자그리기();
-    };
+    for (const x of 상태목록) s.add(new Option(x, x, false, x === b.status));
+    s.onchange = () => 상태바꾸기([b.tag], s.value);
     td.appendChild(s);
     tr.appendChild(td);
     tbody.appendChild(tr);
   }
   $("#empty").hidden = 보기.length > 0;
 
-  // 배차 후보 묶음: 날짜 + 2시간 시간대 + 지역
+  // 배차 후보 묶음: 날짜 + 2시간 시간대 + 지역 → 묶음째 배차 확정
   const 묶음 = new Map();
   for (const b of 보기.filter((x) => x.status === "수거 대기")) {
     const t = new Date(b.pickup);
@@ -435,43 +549,66 @@ function 관리자그리기() {
     if (!묶음.has(key)) 묶음.set(key, []);
     묶음.get(key).push(b);
   }
-  $("#groups").innerHTML = 묶음.size
-    ? [...묶음].map(([k, arr]) => {
-        const [시간, 곳] = k.split("|");
-        const 짐 = arr.reduce((s, b) => s + b.bags, 0);
-        return `<div class="group"><b>${esc(곳)}</b><span>${esc(시간)} · ${arr.length}건 · 짐 ${짐}개</span><ul>${arr.map((b) => `<li>${esc(b.tag)} (${b.bags}개)</li>`).join("")}</ul></div>`;
-      }).join("")
-    : '<p class="empty">수거 대기 중인 예약이 없습니다.</p>';
+  const 칸 = $("#groups");
+  칸.innerHTML = 묶음.size ? "" : '<p class="empty">수거 대기 중인 예약이 없습니다.</p>';
+  for (const [k, arr] of 묶음) {
+    const [시간, 곳] = k.split("|");
+    const 짐 = arr.reduce((s, b) => s + Number(b.bags), 0);
+    const g = document.createElement("div");
+    g.className = "group";
+    g.innerHTML = `<b>${esc(곳)}</b><span>${esc(시간)} · ${arr.length}건 · 짐 ${짐}개</span><ul>${arr.map((b) => `<li>${esc(b.tag)} · ${esc(b.name)} (${Number(b.bags)}개)</li>`).join("")}</ul>`;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn-primary btn-sm";
+    btn.textContent = "이 묶음 배차 확정";
+    btn.onclick = () => 상태바꾸기(arr.map((b) => b.tag), "배차 확정");
+    g.appendChild(btn);
+    칸.appendChild(g);
+  }
 }
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+// 엑셀에서 열리는 CSV (수식 주입 막기: =,+,-,@ 로 시작하는 값 앞에 ' 를 붙인다)
+function csv내보내기() {
+  const 머리 = ["태그", "상태", "수거 시각", "지역", "주소", "예약자", "연락처", "항공편", "터미널", "출발", "짐", "요금"];
+  const 셀 = (v) => { let s = String(v ?? ""); if (/^[=+\-@]/.test(s)) s = "'" + s; return `"${s.replace(/"/g, '""')}"`; };
+  const 줄 = 예약목록.map((b) => [b.tag, b.status, 보기시각(new Date(b.pickup)), b.region, b.address, b.name, b.phone, b.flight, b.terminal, 보기시각(new Date(b.departure)), b.bags, b.fee].map(셀).join(","));
+  const blob = new Blob(["﻿" + [머리.map(셀).join(","), ...줄].join("\r\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `홈드롭_예약_${kst날짜(new Date())}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+$("#adminLogin").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const pw = $("#adminPassword");
+  $("#loginMsg").textContent = "확인 중…";
+  try {
+    const d = await 요청("/api/admin-login", { method: "POST", body: JSON.stringify({ password: pw.value }) });
+    출입증저장(d.token);
+    pw.value = "";
+    $("#loginMsg").textContent = "";
+    await 관리자열기();
+  } catch (err) {
+    $("#loginMsg").textContent = err.message;
+  }
+});
+$("#logout").onclick = () => { 출입증저장(null); 예약목록 = []; 관리자상태(false); };
+$("#refresh").onclick = 목록불러오기;
+$("#exportCsv").onclick = csv내보내기;
 $("#dateFilter").onchange = 관리자그리기;
-$("#clearAll").onclick = () => { if (confirm("이 브라우저에 저장된 시연 예약을 모두 지울까요?")) { 저장([]); 관리자그리기(); } };
-$("#seed").onclick = () => {
-  // 합성 데이터 — 실제 사람 정보가 아니다
-  const 예시 = [
-    ["김하늘", "서울 성북구 삼선교로 16길", "서울 성북구", 2, 1, 9],
-    ["이도윤", "서울 성북구 보문로 34", "서울 성북구", 3, 1, 9],
-    ["박서연", "서울 강남구 테헤란로 152", "서울 강남구", 1, 1, 14],
-    ["최지우", "인천 연수구 송도과학로 32", "인천 연수구", 2, 2, 8],
-    ["정민준", "경기 고양시 일산동구 중앙로 1275", "경기 고양시", 4, 3, 11],
-  ];
-  const list = 불러오기();
-  const 날 = kst날짜(new Date()).slice(2).replace(/-/g, "");
-  예시.forEach(([name, address, region, bags, 일, 시], i) => {
-    const pickup = new Date(kst날짜(오늘부터(일)) + `T${String(시).padStart(2, "0")}:00:00+09:00`);
-    list.push({
-      id: "seed" + i + Date.now(), tag: `HD-${날}-S${String(list.length + 1).padStart(3, "0")}`,
-      name, phone: "010-0000-000" + i, address, region, flight: ["KE703", "OZ102", "7C1101", "LJ203", "ZE605"][i],
-      departure: new Date(pickup.getTime() + 10 * 3600000).toISOString(), terminal: i % 2 ? "제1터미널" : "제2터미널",
-      bags, fee: 요금(bags), pickup: pickup.toISOString(), status: "수거 대기", createdAt: new Date().toISOString(),
-    });
-  });
-  저장(list);
-  관리자그리기();
+$("#adminSearch").oninput = 관리자그리기;
+$("#clearAll").onclick = async () => {
+  if (!confirm("저장된 예약을 모두 지울까요? 되돌릴 수 없습니다.")) return;
+  try { 예약목록 = (await 요청("/api/bookings", { method: "DELETE" })).bookings; 관리자그리기(); } catch (e) { $("#adminMsg").textContent = e.message; }
+};
+$("#seed").onclick = async () => {
+  try { 예약목록 = (await 요청("/api/bookings", { method: "POST", body: JSON.stringify({ seed: true }) })).bookings; 관리자그리기(); } catch (e) { $("#adminMsg").textContent = e.message; }
 };
 
 // ───────── 화면 전환 ─────────
@@ -480,12 +617,10 @@ function 화면() {
   $("#view-chat").hidden = admin;
   $("#view-admin").hidden = !admin;
   document.querySelectorAll("[data-tab]").forEach((a) => a.setAttribute("aria-selected", String((a.dataset.tab === "admin") === admin)));
-  if (admin) 관리자그리기();
+  if (admin) 관리자열기();
   window.scrollTo(0, 0);
 }
 window.addEventListener("hashchange", 화면);
-window.addEventListener("storage", () => location.hash === "#admin" && 관리자그리기());
 
-말풍선("bot", "안녕하세요, 홈드롭 안내 도우미 「드롭이」예요. 무거운 짐은 집 앞에서 받아 인천공항까지 옮겨 드릴게요(수업 시연용).\n예약은 「예약 시작」을 눌러 주시고, 요금·수거 시간·맡길 수 없는 물품·공항 이용이 궁금하면 편하게 물어보세요.");
-기본선택지();
+대화새로();
 화면();

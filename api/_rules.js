@@ -14,8 +14,12 @@ const 오늘부터 = (일) => new Date(new Date(kst날짜(new Date()) + "T00:00:
 
 const 글 = (v, 최대) => String(v ?? "").replace(/[\u0000-\u001f<>]/g, "").trim().slice(0, 최대);
 
+// 개인정보 처리 안내(public/privacy.html)의 시행일 — 안내를 고치면 이 값도 바꾼다
+const 동의버전 = "2026-10-24";
+
 // 입력을 검사해 저장할 예약으로 만든다. 문제가 있으면 { 오류 }
 function 예약검사(b) {
+  if (b.consent !== true) return { 오류: "개인정보 수집·이용에 동의해야 예약할 수 있습니다." };
   const name = 글(b.name, 20);
   if (name.length < 2) return { 오류: "성함은 2~20자로 적어 주세요." };
 
@@ -50,6 +54,7 @@ function 예약검사(b) {
       name, phone, address, region, flight,
       airline: 글(b.airline, 30), destination: 글(b.destination, 30), terminal: 글(b.terminal, 20) || "확인 필요",
       departure: 출발.toISOString(), pickup: 수거.toISOString(), bags, fee: 요금(bags),
+      consentAt: new Date().toISOString(), consentVersion: 동의버전,
     },
   };
 }

@@ -7,14 +7,14 @@
 // 예약은 접수 후 30일이 지나면 저장소에서 저절로 지워진다(개인정보 보관 기간 최소화).
 
 const crypto = require("crypto");
-const { 명령, 쓸수있나, 저장소없음 } = require("./_store");
+const { 명령, 쓸수있나, 저장소없음, 접두 } = require("./_store");
 const { 같은출처, 본문, 너무많음 } = require("./_http");
 const { 관리자인가 } = require("./_auth");
 const { 예약검사, 상태목록, 요금, kst날짜, 오늘부터 } = require("./_rules");
 
 const 보관초 = 30 * 86400;
-const 목록키 = "hd:bookings";
-const 예약키 = (tag) => `hd:b:${tag}`;
+const 목록키 = () => `${접두()}:bookings`;
+const 예약키 = (tag) => `${접두()}:b:${tag}`;
 
 module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
@@ -53,21 +53,22 @@ async function 접수(req, res) {
 
 async function 저장(예약) {
   const 날 = kst날짜(new Date()).slice(2).replace(/-/g, "");
-  const 번호 = await 명령(["INCR", `hd:seq:${날}`]);
-  if (번호 === 1) await 명령(["EXPIRE", `hd:seq:${날}`, 2 * 86400]);
+  const 순번키 = `${접두()}:seq:${날}`;
+  const 번호 = await 명령(["INCR", 순번키]);
+  if (번호 === 1) await 명령(["EXPIRE", 순번키, 2 * 86400]);
   const tag = `HD-${날}-${String(번호).padStart(4, "0")}`;
   const 기록 = { ...예약, tag, id: crypto.randomUUID(), status: "수거 대기", createdAt: new Date().toISOString() };
   await 명령(["SET", 예약키(tag), JSON.stringify(기록), "EX", 보관초]);
-  await 명령(["SADD", 목록키, tag]);
+  await 명령(["SADD", 목록키(), tag]);
   return 기록;
 }
 
 async function 목록() {
-  const tags = await 명령(["SMEMBERS", 목록키]);
+  const tags = await 명령(["SMEMBERS", 목록키()]);
   if (!tags.length) return [];
   const 값들 = await 명령(["MGET", ...tags.map(예약키)]);
   const 지난것 = tags.filter((_, i) => !값들[i]);
-  if (지난것.length) await 명령(["SREM", 목록키, ...지난것]); // 보관 기간이 지나 지워진 예약
+  if (지난것.length) await 명령(["SREM", 목록키(), ...지난것]); // 보관 기간이 지나 지워진 예약
   return 값들.filter(Boolean).map((v) => JSON.parse(v)).sort((a, b) => a.pickup.localeCompare(b.pickup));
 }
 
@@ -86,9 +87,9 @@ async function 상태바꾸기(req, res) {
 }
 
 async function 모두지우기(res) {
-  const tags = await 명령(["SMEMBERS", 목록키]);
+  const tags = await 명령(["SMEMBERS", 목록키()]);
   if (tags.length) await 명령(["DEL", ...tags.map(예약키)]);
-  await 명령(["DEL", 목록키]);
+  await 명령(["DEL", 목록키()]);
   return res.json({ bookings: [] });
 }
 

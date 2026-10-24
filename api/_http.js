@@ -1,6 +1,6 @@
 // API 공통 도우미 — 출처 검사, 요청 본문, 이용자 IP, 요청 수 제한
 
-const { 명령 } = require("./_store");
+const { 명령, 접두 } = require("./_store");
 
 // 이 사이트 화면에서 온 요청만 받는다. 브라우저는 POST·PATCH·DELETE 에 Origin 을 꼭 붙이므로,
 // Origin 이 없는 요청(curl 등 화면 밖 호출)도 거절한다.
@@ -31,7 +31,7 @@ function 접속IP(req) {
 // 종류별 요청 수 제한 (저장소에 세므로 함수 인스턴스가 여러 개여도 공유된다)
 async function 너무많음(종류, req, 최대, 초) {
   const 칸 = Math.floor(Date.now() / (초 * 1000));
-  const key = `hd:rl:${종류}:${접속IP(req)}:${칸}`;
+  const key = `${접두()}:rl:${종류}:${접속IP(req)}:${칸}`;
   try {
     const n = await 명령(["INCR", key]);
     if (n === 1) await 명령(["EXPIRE", key, 초 * 2]);

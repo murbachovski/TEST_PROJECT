@@ -6,6 +6,13 @@ const TOKEN = () => process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_R
 
 class 저장소없음 extends Error {}
 
+// 예약·요청 제한 키의 머리. 미리보기(Preview)·로컬은 운영(Production) 데이터와 섞이지 않게 따로 쓴다.
+// (임베딩 캐시는 환경과 상관없는 계산 결과라 함께 쓴다)
+function 접두() {
+  const env = process.env.VERCEL_ENV;
+  return !env || env === "production" ? (process.env.VERCEL ? "hd" : "hd-local") : `hd-${env}`;
+}
+
 function 쓸수있나() {
   return Boolean((URL_() && TOKEN()) || !process.env.VERCEL);
 }
@@ -43,7 +50,14 @@ function 메모리([cmd, k, ...rest]) {
   switch (cmd.toUpperCase()) {
     case "INCR": { const n = (살아있나(k) ? Number(값.get(k)) : 0) + 1; 값.set(k, String(n)); return n; }
     case "EXPIRE": 만료.set(k, Date.now() + Number(rest[0]) * 1000); return 1;
-    case "SET": 값.set(k, rest[0]); if (rest[1] === "EX") 만료.set(k, Date.now() + Number(rest[2]) * 1000); return "OK";
+    case "SET": {
+      const nx = rest.includes("NX");
+      if (nx && 살아있나(k)) return null; // 이미 있으면 잡지 않는다 (Redis 와 같게)
+      값.set(k, rest[0]);
+      const ex = rest.indexOf("EX");
+      if (ex > 0) 만료.set(k, Date.now() + Number(rest[ex + 1]) * 1000);
+      return "OK";
+    }
     case "GET": return 살아있나(k) ? 값.get(k) : null;
     case "MGET": return [k, ...rest].map((x) => (살아있나(x) ? 값.get(x) : null));
     case "DEL": return [k, ...rest].filter((x) => 값.delete(x)).length;
@@ -54,4 +68,4 @@ function 메모리([cmd, k, ...rest]) {
   }
 }
 
-module.exports = { 명령, 쓸수있나, 저장소없음 };
+module.exports = { 명령, 쓸수있나, 저장소없음, 접두 };

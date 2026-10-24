@@ -9,7 +9,8 @@ const crypto = require("crypto");
 const { 문서읽기, 임베딩글 } = require("./_docs");
 const { 명령 } = require("./_store");
 
-const 모델 = () => process.env.GEMINI_EMBED_MODEL || "gemini-embedding-001";
+// 한도는 모델마다 따로라, 앞 모델이 막히면 다음 모델로 색인을 만든다. 질문은 색인과 같은 모델로만 바꾼다
+const 모델목록 = () => (process.env.GEMINI_EMBED_MODEL ? [process.env.GEMINI_EMBED_MODEL] : ["gemini-embedding-2", "gemini-embedding-001"]);
 const 차원 = 768;
 const 묶음크기 = 50;
 const 제한초 = 15;
@@ -20,8 +21,8 @@ let 만드는중 = null;
 let 쉬는까지 = 0;
 
 const sha = (s) => crypto.createHash("sha1").update(s).digest("hex").slice(0, 20);
-const 조각키 = (c) => `hd:emb:${모델()}:${차원}:${sha(임베딩글(c))}`;
-const 질문키 = (q) => `hd:qemb:${모델()}:${차원}:${sha(q)}`;
+const 조각키 = (m, c) => `hd:emb:${m}:${차원}:${sha(임베딩글(c))}`;
+const 질문키 = (m, q) => `hd:qemb:${m}:${차원}:${sha(q)}`;
 const 담기 = (v) => Buffer.from(v.buffer, v.byteOffset, v.byteLength).toString("base64");
 const 꺼내기 = (s) => {
   const b = Buffer.from(s, "base64");
@@ -51,11 +52,17 @@ async function 저장소(args) {
   }
 }
 
-async function 임베딩(글들, taskType) {
-  const m = 모델();
-  const body = JSON.stringify({
-    requests: 글들.map((text) => ({ model: `models/${m}`, content: { parts: [{ text }] }, taskType, outputDimensionality: 차원 })),
-  });
+// gemini-embedding-2 는 taskType 대신 글 앞에 작업 머리말을 붙인다 (ai.google.dev/gemini-api/docs/embeddings)
+function 요청(m, text, taskType) {
+  if (/embedding-2/.test(m)) {
+    const 머리 = taskType === "RETRIEVAL_QUERY" ? "task: search result | query: " : "title: none | text: ";
+    return { model: `models/${m}`, content: { parts: [{ text: 머리 + text }] }, outputDimensionality: 차원 };
+  }
+  return { model: `models/${m}`, content: { parts: [{ text }] }, taskType, outputDimensionality: 차원 };
+}
+
+async function 임베딩(m, 글들, taskType) {
+  const body = JSON.stringify({ requests: 글들.map((t) => 요청(m, t, taskType)) });
   for (const key of 키목록()) {
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), 제한초 * 1000);
@@ -80,25 +87,40 @@ async function 임베딩(글들, taskType) {
       clearTimeout(t);
     }
   }
-  쉬는까지 = Date.now() + 쉬는시간;
   return null;
 }
 
 async function 색인만들기(조각, 해시) {
-  const 키 = 조각.map(조각키);
+  // 1) 저장소에 이미 다 계산된 모델이 있으면 API 를 부르지 않고 그것을 쓴다
+  for (const m of 모델목록()) {
+    const 결과 = await 모델로색인(m, 조각, 해시, true);
+    if (결과) return 결과;
+  }
+  // 2) 없으면 모델 순서대로 빈 조각을 계산한다
+  for (const m of 모델목록()) {
+    const 결과 = await 모델로색인(m, 조각, 해시, false);
+    if (결과) return 결과;
+  }
+  쉬는까지 = Date.now() + 쉬는시간;
+  return null;
+}
+
+async function 모델로색인(m, 조각, 해시, 저장된것만) {
+  const 키 = 조각.map((c) => 조각키(m, c));
   const 저장된 = (await 저장소(["MGET", ...키])) || [];
   const 벡터 = 조각.map((_, i) => (저장된[i] ? 꺼내기(저장된[i]) : null));
   const 빈곳 = 벡터.map((v, i) => (v ? -1 : i)).filter((i) => i >= 0);
+  if (저장된것만 && 빈곳.length) return null;
   for (let s = 0; s < 빈곳.length; s += 묶음크기) {
     const 이번 = 빈곳.slice(s, s + 묶음크기);
-    const 결과 = await 임베딩(이번.map((i) => 임베딩글(조각[i])), "RETRIEVAL_DOCUMENT");
+    const 결과 = await 임베딩(m, 이번.map((i) => 임베딩글(조각[i])), "RETRIEVAL_DOCUMENT");
     if (!결과) return null;
     for (let j = 0; j < 이번.length; j++) {
       벡터[이번[j]] = 결과[j];
       await 저장소(["SET", 키[이번[j]], 담기(결과[j]), "EX", 90 * 86400]);
     }
   }
-  return { 해시, 벡터 };
+  return { 해시, 벡터, 모델: m };
 }
 
 async function 색인얻기() {
@@ -111,12 +133,15 @@ async function 색인얻기() {
   return 새색인;
 }
 
-async function 질문벡터(질문) {
-  const 키 = 질문키(질문);
+async function 질문벡터(m, 질문) {
+  const 키 = 질문키(m, 질문);
   const 저장된 = await 저장소(["GET", 키]);
   if (저장된) return 꺼내기(저장된);
-  const r = await 임베딩([질문], "RETRIEVAL_QUERY");
-  if (!r) return null;
+  const r = await 임베딩(m, [질문], "RETRIEVAL_QUERY");
+  if (!r) {
+    쉬는까지 = Date.now() + 쉬는시간;
+    return null;
+  }
   await 저장소(["SET", 키, 담기(r[0]), "EX", 86400]);
   return r[0];
 }
@@ -126,7 +151,7 @@ async function 임베딩찾기(질문, k = 6) {
   if (!키목록().length || Date.now() < 쉬는까지) return null;
   const idx = await 색인얻기();
   if (!idx) return null;
-  const qv = await 질문벡터(질문);
+  const qv = await 질문벡터(idx.모델, 질문);
   if (!qv) return null;
   const { 조각 } = 문서읽기();
   return 조각

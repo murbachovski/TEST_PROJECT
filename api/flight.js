@@ -86,7 +86,10 @@ async function 운항목록_받기() {
     실패시각 = Date.now();
     return 메모리.목록;
   }
-  await 저장소(["SET", 저장키, JSON.stringify(목록), "EX", 캐시_초]);
+  const 본문 = JSON.stringify(목록);
+  const 저장됨 = await 저장소(["SET", 저장키, 본문, "EX", 캐시_초]);
+  if (저장됨 !== "OK") console.error("운항현황 저장소 쓰기 실패", 본문.length, "bytes");
+  else console.log("운항현황 저장", 목록.length, "편", 본문.length, "bytes");
   await 저장소(["INCR", `hd:flights:calls:${new Date().toISOString().slice(0, 10)}`]); // 하루 호출 수 (점검용)
   return 기억(목록);
 }

@@ -4,7 +4,7 @@
 // 3) AI 가 모두 실패하면 가장 가까운 문서 대목을 그대로 보여 준다
 // 출처는 파일 이름이 아니라 문서 머리의 실제 기관·페이지 이름과 링크로 돌려준다.
 
-const { 키워드찾기 } = require("./_docs");
+const { 키워드찾기, 알맞은출처 } = require("./_docs");
 const { 임베딩찾기 } = require("./_rag");
 const { 위기인가, 위기안내 } = require("./_safety");
 const { 같은출처, 본문: 요청본문, 너무많음 } = require("./_http");
@@ -117,7 +117,7 @@ function 출처떼기(글, 개수) {
 function 출처모으기(조각들) {
   const 모음 = new Map();
   for (const c of 조각들) {
-    for (const s of c.출처) {
+    for (const s of 알맞은출처(c)) {
       const key = s.url || s.label;
       if (!모음.has(key)) 모음.set(key, { label: s.label, url: s.url, demo: !s.url });
     }

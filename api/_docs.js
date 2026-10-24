@@ -108,4 +108,21 @@ function 키워드찾기(질문, 개수 = 4) {
     .slice(0, 개수);
 }
 
-module.exports = { 문서읽기, 키워드찾기, 임베딩글 };
+// 문서에 출처가 여럿이면, 이 절의 내용과 이름이 가장 잘 맞는 출처 하나를 고른다
+// (예: 교통 문서의 「리무진버스」 절에는 공항철도가 아니라 공항버스 안내 페이지)
+function 알맞은출처(c) {
+  if (c.출처.length <= 1) return c.출처;
+  const 제목 = 조각내기(c.소제목);
+  const 본문 = 조각내기(c.내용);
+  const 기관 = /^(인천국제공항공사|인천국제공항|국가법령정보센터)\s*/;
+  const 점수 = (s) => {
+    const 낱 = [...조각내기(s.label.replace(기관, ""))];
+    if (!낱.length) return 0;
+    return 낱.reduce((합, t) => 합 + (제목.has(t) ? 2 : 본문.has(t) ? 1 : 0), 0) / 낱.length;
+  };
+  const 순위 = c.출처.map((s) => ({ s, 점: 점수(s) })).sort((a, b) => b.점 - a.점);
+  const 고름 = 순위.filter((x, i) => i === 0 || (i === 1 && x.점 > 0 && x.점 >= 순위[0].점 * 0.8));
+  return 고름.map((x) => x.s);
+}
+
+module.exports = { 문서읽기, 키워드찾기, 임베딩글, 알맞은출처 };

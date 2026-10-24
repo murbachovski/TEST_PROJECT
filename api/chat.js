@@ -73,9 +73,10 @@ module.exports = async (req, res) => {
   }
 
   const top = 대목.length ? Math.round(대목[0].점수 * 1000) / 1000 : 0;
+  const model = 대목[0]?.모델 || null; // 어느 임베딩 모델로 찾았는지 (점검용)
   const 인사 = /^(안녕|하이|hi|hello|고마|감사|반가|수고|ㅎㅇ)/i.test(질문);
   if (!대목.length || (retrieval === "embedding" && top < 관련_최소(대목[0].모델) && !인사)) {
-    return res.json({ answer: "제가 가진 안내 자료에는 그 내용이 없어요. 홈드롭 예약·요금·수거 시간, 맡길 수 없는 물품, 인천공항 이용 안내를 물어봐 주세요.", sources: [], mode: "none", retrieval, top });
+    return res.json({ answer: "제가 가진 안내 자료에는 그 내용이 없어요. 홈드롭 예약·요금·수거 시간, 맡길 수 없는 물품, 인천공항 이용 안내를 물어봐 주세요.", sources: [], mode: "none", retrieval, top, model });
   }
 
   const 참고 = 대목
@@ -88,7 +89,7 @@ module.exports = async (req, res) => {
   const ai = (await gemini(시스템, 메시지)) || (await groq(시스템, 메시지));
   if (ai) {
     const { 본문, 번호 } = 출처떼기(ai, 대목.length);
-    return res.json({ answer: 본문, sources: 출처모으기(번호.map((n) => 대목[n - 1])), mode: "ai", retrieval, top });
+    return res.json({ answer: 본문, sources: 출처모으기(번호.map((n) => 대목[n - 1])), mode: "ai", retrieval, top, model });
   }
 
   // AI 키가 없거나 모두 실패 — 가장 가까운 대목을 그대로 보여 준다

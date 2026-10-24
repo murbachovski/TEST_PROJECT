@@ -17,3 +17,7 @@ docs/디자인시스템/
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# 스킬 설치기가 만드는 로컬 캐시
+.agents/
+skills-lock.json

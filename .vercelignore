@@ -6,3 +6,5 @@ CLAUDE.md
 docs/기획서
 docs/디자인시스템
 .DS_Store
+.agents
+skills-lock.json

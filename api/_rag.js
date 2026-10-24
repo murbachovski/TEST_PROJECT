@@ -159,7 +159,7 @@ async function 임베딩찾기(질문, k = 6) {
       const v = idx.벡터[i];
       let s = 0;
       for (let j = 0; j < v.length; j++) s += v[j] * qv[j];
-      return { ...c, 점수: s };
+      return { ...c, 점수: s, 모델: idx.모델 };
     })
     .sort((a, b) => b.점수 - a.점수)
     .slice(0, k);

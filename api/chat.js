@@ -13,8 +13,11 @@ const 질문_최대길이 = 500;
 const 대화_최대개수 = 6;
 const 제한초 = 12;
 const 분당_최대 = 20; // 한 사람(IP)이 1분에 보낼 수 있는 질문 수 — 키 소모를 막는다
-// 질문과 가장 가까운 문서 조각의 임베딩 유사도가 이보다 낮으면 AI 를 부르지 않고 「자료에 없다」로 답한다
-const 관련_최소 = Number(process.env.RAG_MIN_SCORE || 0);
+// 질문과 가장 가까운 문서 조각의 임베딩 유사도가 이보다 낮으면 AI 를 부르지 않고 「자료에 없다」로 답한다.
+// 값은 모델마다 척도가 달라 따로 둔다. gemini-embedding-2 실측(2026-10-24, 40문항): 관련 질문 0.68~0.81,
+// 코딩·번역·날씨 0.53~0.61 → 0.64. 실측하지 않은 모델은 0(끄기). RAG_MIN_SCORE 로 덮어쓸 수 있다.
+const 관련_기준 = { "gemini-embedding-2": 0.64 };
+const 관련_최소 = (모델) => Number(process.env.RAG_MIN_SCORE || 관련_기준[모델] || 0);
 
 // ── 페르소나 ──
 const 페르소나 = `너는 「드롭이」다. 수업 시연 서비스 「홈드롭」(집 앞에서 짐을 수거해 인천공항까지 옮겨 주는 서비스를 가정한 시연)의 안내 도우미다.
@@ -71,7 +74,7 @@ module.exports = async (req, res) => {
 
   const top = 대목.length ? Math.round(대목[0].점수 * 1000) / 1000 : 0;
   const 인사 = /^(안녕|하이|hi|hello|고마|감사|반가|수고|ㅎㅇ)/i.test(질문);
-  if (!대목.length || (retrieval === "embedding" && top < 관련_최소 && !인사)) {
+  if (!대목.length || (retrieval === "embedding" && top < 관련_최소(대목[0].모델) && !인사)) {
     return res.json({ answer: "제가 가진 안내 자료에는 그 내용이 없어요. 홈드롭 예약·요금·수거 시간, 맡길 수 없는 물품, 인천공항 이용 안내를 물어봐 주세요.", sources: [], mode: "none", retrieval, top });
   }
 
